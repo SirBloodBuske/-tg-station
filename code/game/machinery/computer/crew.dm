@@ -1,40 +1,35 @@
+#define SENSORS_UPDATE_PERIOD 100 //How often the sensor data updates.
+
 /obj/machinery/computer/crew
 	name = "crew monitoring console"
 	desc = "Used to monitor active health sensors built into most of the crew's uniforms."
-	icon_state = "crew"
-	use_power = 1
+	icon_screen = "crew"
+	icon_keyboard = "med_key"
+	use_power = IDLE_POWER_USE
 	idle_power_usage = 250
 	active_power_usage = 500
-	circuit = "/obj/item/weapon/circuitboard/crew"
+	circuit = /obj/item/circuitboard/computer/crew
 
-/obj/machinery/computer/crew/attack_ai(mob/user)
-	if(stat & (BROKEN|NOPOWER))
-		return
-	crewmonitor(user,src)
+	light_color = LIGHT_COLOR_BLUE
 
-/obj/machinery/computer/crew/attack_hand(mob/user)
-	if(..())
-		return
-	if(stat & (BROKEN|NOPOWER))
-		return
-	crewmonitor(user,src)
+/obj/machinery/computer/crew/syndie
+	icon_keyboard = "syndie_key"
 
-/obj/machinery/computer/crew/Topic(href, href_list)
-	if(..()) return
-	if (src.z > 6)
-		usr << "<span class='boldannounce'>Unable to establish a connection</span>: \black You're too far away from the station!"
-		return
-	if( href_list["close"] )
-		usr << browse(null, "window=crewcomp")
-		usr.unset_machine()
-		return
-	if(href_list["update"])
-		src.updateDialog()
-		return
+/obj/machinery/computer/crew/interact(mob/user)
+	GLOB.crewmonitor.show(user,src)
 
+GLOBAL_DATUM_INIT(crewmonitor, /datum/crewmonitor, new)
 
-proc/crewmonitor(mob/user,var/atom/source)
-	var/jobs[0]
+/datum/crewmonitor
+	var/list/ui_sources = list() //List of user -> ui source
+	var/list/jobs
+	var/list/data_by_z = list()
+	var/list/last_update = list()
+
+/datum/crewmonitor/New()
+	. = ..()
+
+	var/list/jobs = new/list()
 	jobs["Captain"] = 00
 	jobs["Head of Personnel"] = 50
 	jobs["Head of Security"] = 10
@@ -58,14 +53,14 @@ proc/crewmonitor(mob/user,var/atom/source)
 	jobs["Bartender"] = 61
 	jobs["Cook"] = 62
 	jobs["Botanist"] = 63
-	jobs["Librarian"] = 64
+	jobs["Curator"] = 64
 	jobs["Chaplain"] = 65
 	jobs["Clown"] = 66
 	jobs["Mime"] = 67
 	jobs["Janitor"] = 68
 	jobs["Lawyer"] = 69
 	jobs["Admiral"] = 200
-	jobs["Centcom Commander"] = 210
+	jobs["CentCom Commander"] = 210
 	jobs["Custodian"] = 211
 	jobs["Medical Officer"] = 212
 	jobs["Research Officer"] = 213
@@ -73,76 +68,128 @@ proc/crewmonitor(mob/user,var/atom/source)
 	jobs["Security Response Officer"] = 221
 	jobs["Engineer Response Officer"] = 222
 	jobs["Medical Response Officer"] = 223
-	jobs["Assistant"] = 999	//Unknowns/custom jobs should appear after civilians, and before assistants
+	jobs["Assistant"] = 999 //Unknowns/custom jobs should appear after civilians, and before assistants
 
-	var/t = "<table width='100%'><tr><td width='40%'><h3>Name</h3></td><td width='30%'><h3>Vitals</h3></td><td width='30%'><h3>Position</h3></td></tr>"
-	var/list/logs = list()
-	var/list/tracked = crewscan()
-	var/turf/srcturf = get_turf(source)
-	for(var/mob/living/carbon/human/H in tracked)
-		var/log = ""
-		var/turf/pos = get_turf(H)
-		if(istype(H.w_uniform, /obj/item/clothing/under))
-			var/obj/item/clothing/under/U = H.w_uniform
-			if(pos && pos.z == srcturf.z && U.sensor_mode)
-				var/obj/item/weapon/card/id/I = null
-				if(H.wear_id)
-					I = H.wear_id.GetID()
+	src.jobs = jobs
 
-				var/life_status = "[H.stat > 1 ? "<span class='bad'>Deceased</span>" : "<span class='good'>Living</span>"]"
+/datum/crewmonitor/Destroy()
+	return ..()
 
-				if(I)
-					var/style = null
-					var/ijob = jobs[I.assignment]
-					if(ijob % 10 == 0)
-						style += "font-weight: bold; "	//head roles always end in 0
-					if(ijob >= 10 && ijob < 20)
-						style += "color: #E74C3C; "	//security
-					if(ijob >= 20 && ijob < 30)
-						style += "color: #3498DB; "	//medical
-					if(ijob >= 30 && ijob < 40)
-						style += "color: #9B59B6; "	//science
-					if(ijob >= 40 && ijob < 50)
-						style += "color: #F1C40F; "	//engineering
-					if(ijob >= 50 && ijob < 60)
-						style += "color: #F39C12; "	//cargo
-					if(ijob >= 200 && ijob < 230)
-						style += "color: #00C100; "	//Centcom
-					log += "<span style=\"display: none\">[ijob]]</span><tr><td width='40%'><span style=\"[style]\">[I.registered_name]</span> ([I.assignment])</td>"		//ijob does not get displayed, nor does it take up space, it's just used for the positioning of an entry
+/datum/crewmonitor/ui_interact(mob/user, ui_key = "crew", datum/tgui/ui = null, force_open = FALSE, \
+							datum/tgui/master_ui = null, datum/ui_state/state = GLOB.default_state)
+	ui = SStgui.try_update_ui(user, src, ui_key, ui, force_open)
+	if (!ui)
+		ui = new(user, src, ui_key, "crew", "crew monitor", 800, 600 , master_ui, state)
+		ui.open()
+
+/datum/crewmonitor/proc/show(mob/M, source)
+	ui_sources[M] = source
+	ui_interact(M)
+
+/datum/crewmonitor/ui_host(mob/user)
+	return ui_sources[user]
+
+/datum/crewmonitor/ui_data(mob/user)
+	var/z = user.z
+	if(!z)
+		var/turf/T = get_turf(user)
+		z = T.z
+	var/list/zdata = update_data(z)
+	. = list()
+	.["sensors"] = zdata
+	.["link_allowed"] = isAI(user)
+
+/datum/crewmonitor/proc/update_data(z)
+	if(data_by_z["[z]"] && last_update["[z]"] && world.time <= last_update["[z]"] + SENSORS_UPDATE_PERIOD)
+		return data_by_z["[z]"]
+
+	var/list/results = list()
+	var/obj/item/clothing/under/U
+	var/obj/item/card/id/I
+	var/turf/pos
+	var/ijob
+	var/name
+	var/assignment
+	var/oxydam
+	var/toxdam
+	var/burndam
+	var/brutedam
+	var/area
+	var/pos_x
+	var/pos_y
+	var/life_status
+
+	for(var/mob/living/carbon/human/H in GLOB.carbon_list)
+		var/nanite_sensors = FALSE
+		if(H in SSnanites.nanite_monitored_mobs)
+			nanite_sensors = TRUE
+		// Check if their z-level is correct and if they are wearing a uniform.
+		// Accept H.z==0 as well in case the mob is inside an object.
+		if ((H.z == 0 || H.z == z) && (istype(H.w_uniform, /obj/item/clothing/under) || nanite_sensors))
+			U = H.w_uniform
+
+			// Are the suit sensors on?
+			if (nanite_sensors || ((U.has_sensor > 0) && U.sensor_mode))
+				pos = H.z == 0 || (nanite_sensors || U.sensor_mode == SENSOR_COORDS) ? get_turf(H) : null
+
+				// Special case: If the mob is inside an object confirm the z-level on turf level.
+				if (H.z == 0 && (!pos || pos.z != z))
+					continue
+
+				I = H.wear_id ? H.wear_id.GetID() : null
+
+				if (I)
+					name = I.registered_name
+					assignment = I.assignment
+					ijob = jobs[I.assignment]
 				else
-					log += "<span style=\"display: none\">80</span><tr><td width='40%'><i>Unknown</i></td>"
+					name = "Unknown"
+					assignment = ""
+					ijob = 80
 
-				var/damage_report
-				if(U.sensor_mode > 1)
-					var/dam1 = round(H.getOxyLoss(),1)
-					var/dam2 = round(H.getToxLoss(),1)
-					var/dam3 = round(H.getFireLoss(),1)
-					var/dam4 = round(H.getBruteLoss(),1)
-					damage_report = "(<font color='#3498db'>[dam1]</font>/<font color='#2ecc71'>[dam2]</font>/<font color='#e67e22'>[dam3]</font>/<font color='#e74c3c'>[dam4]</font>)"
+				if (nanite_sensors || U.sensor_mode >= SENSOR_LIVING)
+					life_status = (!H.stat ? TRUE : FALSE)
+				else
+					life_status = null
 
-				switch(U.sensor_mode)
-					if(1)
-						log += "<td width='30%'>[life_status]</td><td width='30%'><span style=\"color:#7f8c8d\">Not Available</span></td></tr>"
-					if(2)
-						log += "<td width='30%'>[life_status] [damage_report]</td><td width='30%'><span style=\"color:#7f8c8d\">Not Available</span></td></tr>"
-					if(3)
-						var/area/player_area = get_area(H)
-						log += "<td width='30%'>[life_status] [damage_report]</td><td width='30%'>[format_text(player_area.name)] ([pos.x], [pos.y])</td></tr>"
-		logs += log
-	logs = sortList(logs)
-	for(var/log in logs)
-		t += log
-	t += "</table>"
-	var/datum/browser/popup = new(user, "crewcomp", "Crew Monitoring", 900, 600)
-	popup.set_content(t)
-	popup.open()
+				if (nanite_sensors || U.sensor_mode >= SENSOR_VITALS)
+					oxydam = round(H.getOxyLoss(),1)
+					toxdam = round(H.getToxLoss(),1)
+					burndam = round(H.getFireLoss(),1)
+					brutedam = round(H.getBruteLoss(),1)
+				else
+					oxydam = null
+					toxdam = null
+					burndam = null
+					brutedam = null
 
+				if (nanite_sensors || U.sensor_mode >= SENSOR_COORDS)
+					if (!pos)
+						pos = get_turf(H)
+					area = get_area_name(H, TRUE)
+					pos_x = pos.x
+					pos_y = pos.y
+				else
+					area = null
+					pos_x = null
+					pos_y = null
 
-proc/crewscan()
-	var/list/tracked = list()
-	for(var/mob/living/carbon/human/H in mob_list)
-		if(istype(H.w_uniform, /obj/item/clothing/under))
-			var/obj/item/clothing/under/U = H.w_uniform
-			if(U.has_sensor && U.sensor_mode)
-				tracked.Add(H)
-	return tracked
+				results[++results.len] = list("name" = name, "assignment" = assignment, "ijob" = ijob, "life_status" = life_status, "oxydam" = oxydam, "toxdam" = toxdam, "burndam" = burndam, "brutedam" = brutedam, "area" = area, "pos_x" = pos_x, "pos_y" = pos_y, "can_track" = H.can_track(null))
+
+	data_by_z["[z]"] = sortTim(results,/proc/sensor_compare)
+	last_update["[z]"] = world.time
+
+	return results
+
+/proc/sensor_compare(list/a,list/b)
+	return a["ijob"] - b["ijob"]
+
+/datum/crewmonitor/ui_act(action,params)
+	var/mob/living/silicon/ai/AI = usr
+	if(!istype(AI))
+		return
+	switch (action)
+		if ("select_person")
+			AI.ai_camera_track(params["name"])
+
+#undef SENSORS_UPDATE_PERIOD

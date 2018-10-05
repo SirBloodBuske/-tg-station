@@ -4,141 +4,131 @@
  * Airless
  * Airless plating
  * Engine floor
+ * Foam plating
  */
-// note that plating and engine floor do not call their parent attackby, unlike other flooring
-// this is done in order to avoid inheriting the crowbar attackby
 
-/turf/simulated/floor/plating
+/turf/open/floor/plating
 	name = "plating"
 	icon_state = "plating"
-	intact = 0
-	broken_states = list("platingdmg1", "platingdmg2", "platingdmg3")
-	burnt_states = list("panelscorched")
+	intact = FALSE
+	baseturfs = /turf/open/space
+	footstep = FOOTSTEP_PLATING
 
-/turf/simulated/floor/plating/New()
+	var/attachment_holes = TRUE
+
+/turf/open/floor/plating/examine(mob/user)
 	..()
-	icon_plating = icon_state
+	if(broken || burnt)
+		to_chat(user, "<span class='notice'>It looks like the dents could be <i>welded</i> smooth.</span>")
+		return
+	if(attachment_holes)
+		to_chat(user, "<span class='notice'>There are a few attachment holes for a new <i>tile</i> or reinforcement <i>rods</i>.</span>")
+	else
+		to_chat(user, "<span class='notice'>You might be able to build ontop of it with some <i>tiles</i>...</span>")
 
-/turf/simulated/floor/plating/update_icon()
+/turf/open/floor/plating/Initialize()
+	if (!broken_states)
+		broken_states = list("platingdmg1", "platingdmg2", "platingdmg3")
+	if (!burnt_states)
+		burnt_states = list("panelscorched")
+	. = ..()
+	if(!attachment_holes || (!broken && !burnt))
+		icon_plating = icon_state
+	else
+		icon_plating = initial(icon_state)
+
+/turf/open/floor/plating/update_icon()
 	if(!..())
 		return
 	if(!broken && !burnt)
 		icon_state = icon_plating //Because asteroids are 'platings' too.
 
-/turf/simulated/floor/plating/attackby(obj/item/C as obj, mob/user as mob, params)
+/turf/open/floor/plating/attackby(obj/item/C, mob/user, params)
 	if(..())
 		return
-	if(istype(C, /obj/item/stack/rods))
+	if(istype(C, /obj/item/stack/rods) && attachment_holes)
 		if(broken || burnt)
-			user << "<span class='warning'>Repair the plating first!</span>"
+			to_chat(user, "<span class='warning'>Repair the plating first!</span>")
 			return
 		var/obj/item/stack/rods/R = C
 		if (R.get_amount() < 2)
-			user << "<span class='warning'>You need two rods to make a reinforced floor!</span>"
+			to_chat(user, "<span class='warning'>You need two rods to make a reinforced floor!</span>")
 			return
 		else
-			user << "<span class='notice'>You begin reinforcing the floor...</span>"
-			if(do_after(user, 30))
-				if (R.get_amount() >= 2)
-					ChangeTurf(/turf/simulated/floor/engine)
-					playsound(src, 'sound/items/Deconstruct.ogg', 80, 1)
+			to_chat(user, "<span class='notice'>You begin reinforcing the floor...</span>")
+			if(do_after(user, 30, target = src))
+				if (R.get_amount() >= 2 && !istype(src, /turf/open/floor/engine))
+					PlaceOnTop(/turf/open/floor/engine)
+					playsound(src, 'sound/items/deconstruct.ogg', 80, 1)
 					R.use(2)
-					user << "<span class='notice'>You reinforce the floor.</span>"
+					to_chat(user, "<span class='notice'>You reinforce the floor.</span>")
 				return
 	else if(istype(C, /obj/item/stack/tile))
 		if(!broken && !burnt)
+			for(var/obj/O in src)
+				if(O.level == 1) //ex. pipes laid underneath a tile
+					for(var/M in O.buckled_mobs)
+						to_chat(user, "<span class='warning'>Someone is buckled to \the [O]! Unbuckle [M] to move \him out of the way.</span>")
+						return
 			var/obj/item/stack/tile/W = C
 			if(!W.use(1))
 				return
-			var/turf/simulated/floor/T = ChangeTurf(W.turf_type)
-			if(istype(W,/obj/item/stack/tile/light)) //TODO: get rid of this ugly check somehow
+			var/turf/open/floor/T = PlaceOnTop(W.turf_type)
+			if(istype(W, /obj/item/stack/tile/light)) //TODO: get rid of this ugly check somehow
 				var/obj/item/stack/tile/light/L = W
-				var/turf/simulated/floor/light/F = T
+				var/turf/open/floor/light/F = T
 				F.state = L.state
-			playsound(src, 'sound/weapons/Genhit.ogg', 50, 1)
+			playsound(src, 'sound/weapons/genhit.ogg', 50, 1)
 		else
-			user << "<span class='warning'>This section is too damaged to support a tile! Use a welder to fix the damage.</span>"
-	else if(istype(C, /obj/item/weapon/weldingtool))
-		var/obj/item/weapon/weldingtool/welder = C
-		if( welder.isOn() && (broken || burnt) )
-			if(welder.remove_fuel(0,user))
-				user << "<span class='danger'>You fix some dents on the broken plating.</span>"
-				playsound(src, 'sound/items/Welder.ogg', 80, 1)
-				icon_state = icon_plating
-				burnt = 0
-				broken = 0
+			to_chat(user, "<span class='warning'>This section is too damaged to support a tile! Use a welder to fix the damage.</span>")
 
-/turf/simulated/floor/plating/airless
-	icon_state = "plating"
-	oxygen = 0
-	nitrogen = 0
-	temperature = TCMB
+/turf/open/floor/plating/welder_act(mob/living/user, obj/item/I)
+	if((broken || burnt) && I.use_tool(src, user, 0, volume=80))
+		to_chat(user, "<span class='danger'>You fix some dents on the broken plating.</span>")
+		icon_state = icon_plating
+		burnt = FALSE
+		broken = FALSE
 
-/turf/simulated/floor/engine
-	name = "reinforced floor"
-	icon_state = "engine"
-	thermal_conductivity = 0.025
-	heat_capacity = 325000
-	floor_tile = /obj/item/stack/rods
+	return TRUE
 
-/turf/simulated/floor/engine/break_tile()
-	return //unbreakable
-
-/turf/simulated/floor/engine/burn_tile()
-	return //unburnable
-
-/turf/simulated/floor/engine/make_plating(var/force = 0)
-	if(force)
-		..()
-	return //unplateable
-
-/turf/simulated/floor/engine/attackby(obj/item/weapon/C as obj, mob/user as mob, params)
-	if(!C || !user)
-		return
-	if(istype(C, /obj/item/weapon/wrench))
-		user << "<span class='notice'>You begin removing rods...</span>"
-		playsound(src, 'sound/items/Ratchet.ogg', 80, 1)
-		if(do_after(user, 30))
-			new /obj/item/stack/rods(src, 2)
-			ChangeTurf(/turf/simulated/floor/plating)
-			return
-
-/turf/simulated/floor/engine/cult
-	name = "engraved floor"
-	icon_state = "cult"
-
-/turf/simulated/floor/engine/cult/narsie_act()
+/turf/open/floor/plating/make_plating()
 	return
 
-/turf/simulated/floor/engine/n20/New()
+/turf/open/floor/plating/foam
+	name = "metal foam plating"
+	desc = "Thin, fragile flooring created with metal foam."
+	icon_state = "foam_plating"
+
+/turf/open/floor/plating/foam/burn_tile()
+	return //jetfuel can't melt steel foam
+
+/turf/open/floor/plating/foam/break_tile()
+	return //jetfuel can't break steel foam...
+
+/turf/open/floor/plating/foam/attackby(obj/item/I, mob/user, params)
+	if(istype(I, /obj/item/stack/tile/plasteel))
+		var/obj/item/stack/tile/plasteel/P = I
+		if(P.use(1))
+			var/obj/L = locate(/obj/structure/lattice) in src
+			if(L)
+				qdel(L)
+			to_chat(user, "<span class='notice'>You reinforce the foamed plating with tiling.</span>")
+			playsound(src, 'sound/weapons/Genhit.ogg', 50, TRUE)
+			ChangeTurf(/turf/open/floor/plating)
+	else
+		playsound(src, 'sound/weapons/tap.ogg', 100, TRUE) //The attack sound is muffled by the foam itself
+		user.changeNext_move(CLICK_CD_MELEE)
+		user.do_attack_animation(src)
+		if(prob(I.force * 20 - 25))
+			user.visible_message("<span class='danger'>[user] smashes through [src]!</span>", \
+							"<span class='danger'>You smash through [src] with [I]!</span>")
+			ScrapeAway()
+		else
+			to_chat(user, "<span class='danger'>You hit [src], to no effect!</span>")
+
+/turf/open/floor/plating/foam/ex_act()
 	..()
-	var/datum/gas_mixture/adding = new
-	var/datum/gas/sleeping_agent/trace_gas = new
+	ScrapeAway()
 
-	trace_gas.moles = 6000
-	adding.trace_gases += trace_gas
-	adding.temperature = T20C
-
-	assume_air(adding)
-
-/turf/simulated/floor/engine/singularity_pull(S, current_size)
-	if(current_size >= STAGE_FIVE)
-		if(builtin_tile)
-			if(prob(30))
-				builtin_tile.loc = src
-				make_plating()
-		else if(prob(30))
-			ReplaceWithLattice()
-
-/turf/simulated/floor/engine/vacuum
-	name = "vacuum floor"
-	icon_state = "engine"
-	oxygen = 0
-	nitrogen = 0
-	temperature = TCMB
-
-/turf/simulated/floor/plasteel/airless
-	oxygen = 0
-	nitrogen = 0
-	temperature = TCMB
-
+/turf/open/floor/plating/foam/tool_act(mob/living/user, obj/tool/I, tool_type)
+	return

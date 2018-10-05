@@ -1,13 +1,18 @@
 /datum/surgery/core_removal
 	name = "core removal"
-	steps = list(/datum/surgery_step/incise, /datum/surgery_step/incise, /datum/surgery_step/extract_core)
+	steps = list(/datum/surgery_step/incise, /datum/surgery_step/extract_core)
 	species = list(/mob/living/simple_animal/slime)
-	target_must_be_dead = 1
+	possible_locs = list(BODY_ZONE_R_ARM,BODY_ZONE_L_ARM,BODY_ZONE_R_LEG,BODY_ZONE_L_LEG,BODY_ZONE_CHEST,BODY_ZONE_HEAD)
 
+/datum/surgery/core_removal/can_start(mob/user, mob/living/target)
+	if(target.stat == DEAD)
+		return 1
+	return 0
 
 //extract brain
 /datum/surgery_step/extract_core
-	implements = list(/obj/item/weapon/hemostat = 100, /obj/item/weapon/crowbar = 100)
+	name = "extract core"
+	implements = list(/obj/item/hemostat = 100, TOOL_CROWBAR = 100)
 	time = 16
 
 /datum/surgery_step/extract_core/preop(mob/user, mob/living/carbon/target, target_zone, obj/item/tool, datum/surgery/surgery)
@@ -27,5 +32,5 @@
 		else
 			return 0
 	else
-		user << "<span class='warning'>There aren't any cores left in [target]!</span>"
+		to_chat(user, "<span class='warning'>There aren't any cores left in [target]!</span>")
 		return 1

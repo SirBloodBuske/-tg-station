@@ -15,383 +15,170 @@
 /obj/structure/table
 	name = "table"
 	desc = "A square piece of metal standing on four metal legs. It can not move."
-	icon = 'icons/obj/structures.dmi'
+	icon = 'icons/obj/smooth_structures/table.dmi'
 	icon_state = "table"
-	density = 1
-	anchored = 1.0
-	layer = 2.8
-	throwpass = 1	//You can throw objects over this, despite it's density.")
+	density = TRUE
+	anchored = TRUE
+	layer = TABLE_LAYER
+	climbable = TRUE
+	pass_flags = LETPASSTHROW //You can throw objects over this, despite it's density.")
 	var/frame = /obj/structure/table_frame
 	var/framestack = /obj/item/stack/rods
 	var/buildstack = /obj/item/stack/sheet/metal
-	var/busy = 0
+	var/busy = FALSE
 	var/buildstackamount = 1
 	var/framestackamount = 2
-	var/mob/tableclimber
+	var/deconstruction_ready = 1
+	max_integrity = 100
+	integrity_failure = 30
+	smooth = SMOOTH_TRUE
+	canSmoothWith = list(/obj/structure/table, /obj/structure/table/reinforced)
 
-/obj/structure/table/New()
+/obj/structure/table/examine(mob/user)
 	..()
-	for(var/obj/structure/table/T in src.loc)
-		if(T != src)
-			qdel(T)
-	update_icon()
-	for(var/direction in list(1,2,4,8,5,6,9,10))
-		if(locate(/obj/structure/table,get_step(src,direction)))
-			var/obj/structure/table/T = locate(/obj/structure/table,get_step(src,direction))
-			T.update_icon()
+	deconstruction_hints(user)
 
-/obj/structure/table/Destroy()
-	for(var/direction in list(1,2,4,8,5,6,9,10))
-		if(locate(/obj/structure/table,get_step(src,direction)))
-			var/obj/structure/table/T = locate(/obj/structure/table,get_step(src,direction))
-			T.update_icon()
-	..()
+/obj/structure/table/proc/deconstruction_hints(mob/user)
+	to_chat(user, "<span class='notice'>The top is <b>screwed</b> on, but the main <b>bolts</b> are also visible.</span>")
 
 /obj/structure/table/update_icon()
-	spawn(2) //So it properly updates when deleting
-		var/dir_sum = 0
-		for(var/direction in list(1,2,4,8,5,6,9,10))
-			var/skip_sum = 0
-			for(var/obj/structure/window/W in src.loc)
-				if(W.dir == direction) //So smooth tables don't go smooth through windows
-					skip_sum = 1
-					continue
-			var/inv_direction //inverse direction
-			switch(direction)
-				if(1)
-					inv_direction = 2
-				if(2)
-					inv_direction = 1
-				if(4)
-					inv_direction = 8
-				if(8)
-					inv_direction = 4
-				if(5)
-					inv_direction = 10
-				if(6)
-					inv_direction = 9
-				if(9)
-					inv_direction = 6
-				if(10)
-					inv_direction = 5
-			for(var/obj/structure/window/W in get_step(src,direction))
-				if(W.dir == inv_direction) //So smooth tables don't go smooth through windows when the window is on the other table's tile
-					skip_sum = 1
-					continue
-			if(!skip_sum) //means there is a window between the two tiles in this direction
-				if(locate(/obj/structure/table,get_step(src,direction)))
-					if(direction <5)
-						dir_sum += direction
-					else
-						if(direction == 5)	//This permits the use of all table directions. (Set up so clockwise around the central table is a higher value, from north)
-							dir_sum += 16
-						if(direction == 6)
-							dir_sum += 32
-						if(direction == 8)	//Aherp and Aderp.  Jezes I am stupid.  -- SkyMarshal
-							dir_sum += 8
-						if(direction == 10)
-							dir_sum += 64
-						if(direction == 9)
-							dir_sum += 128
+	if(smooth)
+		queue_smooth(src)
+		queue_smooth_neighbors(src)
 
-		var/table_type = 0 //stand_alone table
-		if(dir_sum%16 in cardinal)
-			table_type = 1 //endtable
-			dir_sum %= 16
-		if(dir_sum%16 in list(3,12))
-			table_type = 2 //1 tile thick, streight table
-			if(dir_sum%16 == 3) //3 doesn't exist as a dir
-				dir_sum = 2
-			if(dir_sum%16 == 12) //12 doesn't exist as a dir.
-				dir_sum = 4
-		if(dir_sum%16 in list(5,6,9,10))
-			if(locate(/obj/structure/table,get_step(src.loc,dir_sum%16)))
-				table_type = 3 //full table (not the 1 tile thick one, but one of the 'tabledir' tables)
-			else
-				table_type = 2 //1 tile thick, corner table (treated the same as streight tables in code later on)
-			dir_sum %= 16
-		if(dir_sum%16 in list(13,14,7,11)) //Three-way intersection
-			table_type = 5 //full table as three-way intersections are not sprited, would require 64 sprites to handle all combinations.  TOO BAD -- SkyMarshal
-			switch(dir_sum%16)	//Begin computation of the special type tables.  --SkyMarshal
-				if(7)
-					if(dir_sum == 23)
-						table_type = 6
-						dir_sum = 8
-					else if(dir_sum == 39)
-						dir_sum = 4
-						table_type = 6
-					else if(dir_sum == 55 || dir_sum == 119 || dir_sum == 247 || dir_sum == 183)
-						dir_sum = 4
-						table_type = 3
-					else
-						dir_sum = 4
-				if(11)
-					if(dir_sum == 75)
-						dir_sum = 5
-						table_type = 6
-					else if(dir_sum == 139)
-						dir_sum = 9
-						table_type = 6
-					else if(dir_sum == 203 || dir_sum == 219 || dir_sum == 251 || dir_sum == 235)
-						dir_sum = 8
-						table_type = 3
-					else
-						dir_sum = 8
-				if(13)
-					if(dir_sum == 29)
-						dir_sum = 10
-						table_type = 6
-					else if(dir_sum == 141)
-						dir_sum = 6
-						table_type = 6
-					else if(dir_sum == 189 || dir_sum == 221 || dir_sum == 253 || dir_sum == 157)
-						dir_sum = 1
-						table_type = 3
-					else
-						dir_sum = 1
-				if(14)
-					if(dir_sum == 46)
-						dir_sum = 1
-						table_type = 6
-					else if(dir_sum == 78)
-						dir_sum = 2
-						table_type = 6
-					else if(dir_sum == 110 || dir_sum == 254 || dir_sum == 238 || dir_sum == 126)
-						dir_sum = 2
-						table_type = 3
-					else
-						dir_sum = 2 //These translate the dir_sum to the correct dirs from the 'tabledir' icon_state.
-		if(dir_sum%16 == 15)
-			table_type = 4 //4-way intersection, the 'middle' table sprites will be used.
-		switch(table_type)
-			if(0)
-				icon_state = "[initial(icon_state)]"
-			if(1)
-				icon_state = "[initial(icon_state)]_1tileendtable"
-			if(2)
-				icon_state = "[initial(icon_state)]_1tilethick"
-			if(3)
-				icon_state = "[initial(icon_state)]_dir"
-			if(4)
-				icon_state = "[initial(icon_state)]_middle"
-			if(5)
-				icon_state = "[initial(icon_state)]_dir2"
-			if(6)
-				icon_state = "[initial(icon_state)]_dir3"
-		if (dir_sum in list(1,2,4,8,5,6,9,10))
-			dir = dir_sum
-		else
-			dir = 2
+/obj/structure/table/narsie_act()
+	var/atom/A = loc
+	qdel(src)
+	new /obj/structure/table/wood(A)
 
-/obj/structure/table/ex_act(severity, target)
-	..()
-	if(severity == 3)
-		if(prob(25))
-			table_destroy(1)
-
-/obj/structure/table/blob_act()
-	if(prob(75))
-		table_destroy(1)
-		return
-
-/obj/structure/table/attack_alien(mob/living/user)
-	user.do_attack_animation(src)
-	playsound(src.loc, 'sound/weapons/bladeslice.ogg', 50, 1)
-	visible_message("<span class='danger'>[user] slices [src] apart!</span>")
-	table_destroy(1)
-
-/obj/structure/table/attack_animal(mob/living/simple_animal/user)
-	if(user.environment_smash)
-		user.do_attack_animation(src)
-		playsound(src.loc, 'sound/weapons/Genhit.ogg', 50, 1)
-		visible_message("<span class='danger'>[user] smashes [src] apart!</span>")
-		table_destroy(1)
+/obj/structure/table/ratvar_act()
+	var/atom/A = loc
+	qdel(src)
+	new /obj/structure/table/reinforced/brass(A)
 
 /obj/structure/table/attack_paw(mob/user)
-	attack_hand(user)
-
-/obj/structure/table/attack_hulk(mob/living/carbon/human/user)
-	..(user, 1)
-	visible_message("<span class='danger'>[user] smashes [src] apart!</span>")
-	playsound(src.loc, 'sound/effects/bang.ogg', 50, 1)
-	user.say(pick(";RAAAAAAAARGH!", ";HNNNNNNNNNGGGGGGH!", ";GWAAAAAAAARRRHHH!", "NNNNNNNNGGGGGGGGHH!", ";AAAAAAARRRGH!" ))
-	table_destroy(1)
-	return 1
+	return attack_hand(user)
 
 /obj/structure/table/attack_hand(mob/living/user)
-	user.changeNext_move(CLICK_CD_MELEE)
-	if(tableclimber && tableclimber != user)
-		tableclimber.Weaken(2)
-		tableclimber.visible_message("<span class='warning'>[tableclimber.name] has been knocked off the table", "You're knocked off the table!", "You see [tableclimber.name] get knocked off the table</span>")
+	if(Adjacent(user) && user.pulling)
+		if(isliving(user.pulling))
+			var/mob/living/pushed_mob = user.pulling
+			if(pushed_mob.buckled)
+				to_chat(user, "<span class='warning'>[pushed_mob] is buckled to [pushed_mob.buckled]!</span>")
+				return
+			if(user.a_intent == INTENT_GRAB)
+				if(user.grab_state < GRAB_AGGRESSIVE)
+					to_chat(user, "<span class='warning'>You need a better grip to do that!</span>")
+					return
+				tablepush(user, pushed_mob)
+			if(user.a_intent == INTENT_HELP)
+				pushed_mob.visible_message("<span class='notice'>[user] begins to place [pushed_mob] onto [src]...</span>", \
+									"<span class='userdanger'>[user] begins to place [pushed_mob] onto [src]...</span>")
+				if(do_after(user, 35, target = pushed_mob))
+					tableplace(user, pushed_mob)
+				else
+					return
+			user.stop_pulling()
+		else if(user.pulling.pass_flags & PASSTABLE)
+			user.Move_Pulled(src)
+			if (user.pulling.loc == loc)
+				user.visible_message("<span class='notice'>[user] places [user.pulling] onto [src].</span>",
+					"<span class='notice'>You place [user.pulling] onto [src].</span>")
+				user.stop_pulling()
+	return ..()
 
+/obj/structure/table/attack_tk()
+	return FALSE
 
-/obj/structure/table/attack_tk() // no telehulk sorry
-	return
-
-/obj/structure/table/CanPass(atom/movable/mover, turf/target, height=0)
-	if(height==0) return 1
-
-	if(istype(mover) && mover.checkpass(PASSTABLE))
+/obj/structure/table/CanPass(atom/movable/mover, turf/target)
+	if(istype(mover) && (mover.pass_flags & PASSTABLE))
+		return 1
+	if(mover.throwing)
 		return 1
 	if(locate(/obj/structure/table) in get_turf(mover))
 		return 1
 	else
-		return 0
+		return !density
 
-/obj/structure/table/MouseDrop_T(atom/movable/O, mob/user)
-	if(ismob(O) && user == O && ishuman(user))
-		if(user.canmove)
-			climb_table(user)
-			return
-	if ((!( istype(O, /obj/item/weapon) ) || user.get_active_hand() != O))
-		return
-	if(isrobot(user))
-		return
-	if(!user.drop_item())
-		return
-	if (O.loc != src.loc)
-		step(O, get_dir(O, src))
-	return
+/obj/structure/table/CanAStarPass(ID, dir, caller)
+	. = !density
+	if(ismovableatom(caller))
+		var/atom/movable/mover = caller
+		. = . || (mover.pass_flags & PASSTABLE)
 
-/obj/structure/table/proc/tablepush(obj/item/I, mob/user)
-	if(get_dist(src, user) < 2)
-		var/obj/item/weapon/grab/G = I
-		if(G.affecting.buckled)
-			user << "<span class='warning'>[G.affecting] is buckled to [G.affecting.buckled]!</span>"
-			return 0
-		if(G.state < GRAB_AGGRESSIVE)
-			user << "<span class='warning'>You need a better grip to do that!</span>"
-			return 0
-		if(!G.confirm())
-			return 0
-		G.affecting.loc = src.loc
-		G.affecting.Weaken(5)
-		G.affecting.visible_message("<span class='danger'>[G.assailant] pushes [G.affecting] onto [src].</span>", \
-									"<span class='userdanger'>[G.assailant] pushes [G.affecting] onto [src].</span>")
-		add_logs(G.assailant, G.affecting, "pushed")
-		qdel(I)
-		return 1
-	qdel(I)
+/obj/structure/table/proc/tableplace(mob/living/user, mob/living/pushed_mob)
+	pushed_mob.forceMove(src.loc)
+	pushed_mob.resting = TRUE
+	pushed_mob.update_canmove()
+	pushed_mob.visible_message("<span class='notice'>[user] places [pushed_mob] onto [src].</span>", \
+								"<span class='notice'>[user] places [pushed_mob] onto [src].</span>")
+	log_combat(user, pushed_mob, "placed")
+
+/obj/structure/table/proc/tablepush(mob/living/user, mob/living/pushed_mob)
+	var/added_passtable = FALSE
+	if(!pushed_mob.pass_flags & PASSTABLE)
+		added_passtable = TRUE
+		pushed_mob.pass_flags |= PASSTABLE
+	pushed_mob.Move(src.loc)
+	if(added_passtable)
+		pushed_mob.pass_flags &= ~PASSTABLE
+	if(pushed_mob.loc != loc) //Something prevented the tabling
+		return
+	pushed_mob.Knockdown(40)
+	pushed_mob.visible_message("<span class='danger'>[user] pushes [pushed_mob] onto [src].</span>", \
+								"<span class='userdanger'>[user] pushes [pushed_mob] onto [src].</span>")
+	log_combat(user, pushed_mob, "pushed")
+	if(!ishuman(pushed_mob))
+		return
+	var/mob/living/carbon/human/H = pushed_mob
+	SEND_SIGNAL(H, COMSIG_ADD_MOOD_EVENT, "table", /datum/mood_event/table)
 
 /obj/structure/table/attackby(obj/item/I, mob/user, params)
-	if (istype(I, /obj/item/weapon/grab))
-		tablepush(I, user)
-		return
-
-	if (istype(I, /obj/item/weapon/screwdriver))
-		if(istype(src, /obj/structure/table/reinforced))
-			var/obj/structure/table/reinforced/RT = src
-			if(RT.status == 1)
-				table_destroy(2, user)
-				return
-		else
-			table_destroy(2, user)
+	if(!(flags_1 & NODECONSTRUCT_1))
+		if(I.tool_behaviour == TOOL_SCREWDRIVER && deconstruction_ready)
+			to_chat(user, "<span class='notice'>You start disassembling [src]...</span>")
+			if(I.use_tool(src, user, 20, volume=50))
+				deconstruct(TRUE)
 			return
 
-	if (istype(I, /obj/item/weapon/wrench))
-		if(istype(src, /obj/structure/table/reinforced))
-			var/obj/structure/table/reinforced/RT = src
-			if(RT.status == 1)
-				table_destroy(3, user)
-				return
-		else
-			table_destroy(3, user)
+		if(I.tool_behaviour == TOOL_WRENCH && deconstruction_ready)
+			to_chat(user, "<span class='notice'>You start deconstructing [src]...</span>")
+			if(I.use_tool(src, user, 40, volume=50))
+				playsound(src.loc, 'sound/items/deconstruct.ogg', 50, 1)
+				deconstruct(TRUE, 1)
 			return
 
-	if (istype(I, /obj/item/weapon/storage/bag/tray))
-		var/obj/item/weapon/storage/bag/tray/T = I
+	if(istype(I, /obj/item/storage/bag/tray))
+		var/obj/item/storage/bag/tray/T = I
 		if(T.contents.len > 0) // If the tray isn't empty
-			var/list/obj/item/oldContents = T.contents.Copy()
-			T.quick_empty()
-
-			for(var/obj/item/C in oldContents)
-				C.loc = src.loc
-
+			SEND_SIGNAL(I, COMSIG_TRY_STORAGE_QUICK_EMPTY, drop_location())
 			user.visible_message("[user] empties [I] on [src].")
 			return
 		// If the tray IS empty, continue on (tray will be placed on the table like other items)
 
-	if(isrobot(user))
-		return
-
-	if(!(I.flags & ABSTRACT)) //rip more parems rip in peace ;_;
-		if(user.drop_item())
-			I.Move(loc)
+	if(user.a_intent != INTENT_HARM && !(I.item_flags & ABSTRACT))
+		if(user.transferItemToLoc(I, drop_location()))
 			var/list/click_params = params2list(params)
 			//Center the icon where the user clicked.
 			if(!click_params || !click_params["icon-x"] || !click_params["icon-y"])
 				return
 			//Clamp it so that the icon never moves more than 16 pixels in either direction (thus leaving the table turf)
-			I.pixel_x = Clamp(text2num(click_params["icon-x"]) - 16, -(world.icon_size/2), world.icon_size/2)
-			I.pixel_y = Clamp(text2num(click_params["icon-y"]) - 16, -(world.icon_size/2), world.icon_size/2)
-
-
-/*
- * TABLE DESTRUCTION/DECONSTRUCTION
- */
-
-#define TBL_DESTROY 1
-#define TBL_DISASSEMBLE 2
-#define TBL_DECONSTRUCT 3
-
-/obj/structure/table/proc/table_destroy(var/destroy_type, var/mob/user)
-
-	if(destroy_type == TBL_DESTROY)
-		for(var/i = 1, i <= framestackamount, i++)
-			new framestack(get_turf(src))
-		for(var/i = 1, i <= buildstackamount, i++)
-			new buildstack(get_turf(src))
-		qdel(src)
-		return
-
-	if(destroy_type == TBL_DISASSEMBLE)
-		user << "<span class='notice'>You start disassembling [src]...</span>"
-		playsound(src.loc, 'sound/items/Screwdriver.ogg', 50, 1)
-		if(do_after(user, 20))
-			new frame(src.loc)
-			for(var/i = 1, i <= buildstackamount, i++)
-				new buildstack(get_turf(src))
-			qdel(src)
-			return
-
-	if(destroy_type == TBL_DECONSTRUCT)
-		user << "<span class='notice'>You start deconstructing [src]...</span>"
-		playsound(src.loc, 'sound/items/Ratchet.ogg', 50, 1)
-		if(do_after(user, 40))
-			for(var/i = 1, i <= framestackamount, i++)
-				new framestack(get_turf(src))
-			for(var/i = 1, i <= buildstackamount, i++)
-				new buildstack(get_turf(src))
-			playsound(src.loc, 'sound/items/Deconstruct.ogg', 50, 1)
-			qdel(src)
-			return
-
-/*
- * TABLE CLIMBING
- */
-
-
-/obj/structure/table/proc/climb_table(mob/user)
-	src.add_fingerprint(user)
-	user.visible_message("<span class='warning'>[user] starts climbing onto [src].</span>", \
-								"<span class='notice'>You start climbing onto [src]...</span>")
-	var/climb_time = 20
-	if(user.restrained()) //Table climbing takes twice as long when restrained.
-		climb_time *= 2
-	tableclimber = user
-	if(do_mob(user, user, climb_time))
-		if(src.loc) //Checking if table has been destroyed
-			user.pass_flags += PASSTABLE
-			step(user,get_dir(user,src.loc))
-			user.pass_flags -= PASSTABLE
-			user.visible_message("<span class='warning'>[user] climbs onto [src].</span>", \
-									"<span class='notice'>You climb onto [src].</span>")
-			add_logs(user, src, "climbed onto")
-			user.Stun(2)
-			tableclimber = null
+			I.pixel_x = CLAMP(text2num(click_params["icon-x"]) - 16, -(world.icon_size/2), world.icon_size/2)
+			I.pixel_y = CLAMP(text2num(click_params["icon-y"]) - 16, -(world.icon_size/2), world.icon_size/2)
 			return 1
-	tableclimber = null
-	return 0
+	else
+		return ..()
+
+
+/obj/structure/table/deconstruct(disassembled = TRUE, wrench_disassembly = 0)
+	if(!(flags_1 & NODECONSTRUCT_1))
+		var/turf/T = get_turf(src)
+		new buildstack(T, buildstackamount)
+		if(!wrench_disassembly)
+			new frame(T)
+		else
+			new framestack(T, framestackamount)
+	qdel(src)
 
 
 /*
@@ -400,26 +187,76 @@
 /obj/structure/table/glass
 	name = "glass table"
 	desc = "What did I say about leaning on the glass tables? Now you need surgery."
+	icon = 'icons/obj/smooth_structures/glass_table.dmi'
 	icon_state = "glass_table"
 	buildstack = /obj/item/stack/sheet/glass
+	canSmoothWith = null
+	max_integrity = 70
+	resistance_flags = ACID_PROOF
+	armor = list("melee" = 0, "bullet" = 0, "laser" = 0, "energy" = 0, "bomb" = 0, "bio" = 0, "rad" = 0, "fire" = 80, "acid" = 100)
+	var/list/debris = list()
 
-/obj/structure/table/glass/tablepush(obj/item/I, mob/user)
-	if(..())
-		visible_message("<span class='warning'>[src] breaks!</span>")
-		playsound(src.loc, "shatter", 50, 1)
-		new frame(src.loc)
-		new /obj/item/weapon/shard(src.loc)
-		qdel(src)
+/obj/structure/table/glass/New()
+	. = ..()
+	debris += new frame
+	debris += new /obj/item/shard
 
+/obj/structure/table/glass/Destroy()
+	QDEL_LIST(debris)
+	. = ..()
 
-/obj/structure/table/glass/climb_table(mob/user)
-	if(..())
-		visible_message("<span class='warning'>[src] breaks!</span>")
-		playsound(src.loc, "shatter", 50, 1)
-		new frame(src.loc)
-		new /obj/item/weapon/shard(src.loc)
-		qdel(src)
-		user.Weaken(5)
+/obj/structure/table/glass/Crossed(atom/movable/AM)
+	. = ..()
+	if(flags_1 & NODECONSTRUCT_1)
+		return
+	if(!isliving(AM))
+		return
+	// Don't break if they're just flying past
+	if(AM.throwing)
+		addtimer(CALLBACK(src, .proc/throw_check, AM), 5)
+	else
+		check_break(AM)
+
+/obj/structure/table/glass/proc/throw_check(mob/living/M)
+	if(M.loc == get_turf(src))
+		check_break(M)
+
+/obj/structure/table/glass/proc/check_break(mob/living/M)
+	if(M.has_gravity() && M.mob_size > MOB_SIZE_SMALL && !(M.movement_type & FLYING))
+		table_shatter(M)
+
+/obj/structure/table/glass/proc/table_shatter(mob/living/L)
+	visible_message("<span class='warning'>[src] breaks!</span>",
+		"<span class='danger'>You hear breaking glass.</span>")
+	var/turf/T = get_turf(src)
+	playsound(T, "shatter", 50, 1)
+	for(var/I in debris)
+		var/atom/movable/AM = I
+		AM.forceMove(T)
+		debris -= AM
+		if(istype(AM, /obj/item/shard))
+			AM.throw_impact(L)
+	L.Knockdown(100)
+	qdel(src)
+
+/obj/structure/table/glass/deconstruct(disassembled = TRUE, wrench_disassembly = 0)
+	if(!(flags_1 & NODECONSTRUCT_1))
+		if(disassembled)
+			..()
+			return
+		else
+			var/turf/T = get_turf(src)
+			playsound(T, "shatter", 50, 1)
+			for(var/X in debris)
+				var/atom/movable/AM = X
+				AM.forceMove(T)
+				debris -= AM
+	qdel(src)
+
+/obj/structure/table/glass/narsie_act()
+	color = NARSIE_WINDOW_COLOUR
+	for(var/obj/item/shard/S in debris)
+		S.color = NARSIE_WINDOW_COLOUR
 
 /*
  * Wooden tables
@@ -428,62 +265,191 @@
 /obj/structure/table/wood
 	name = "wooden table"
 	desc = "Do not apply fire to this. Rumour says it burns easily."
-	icon_state = "woodtable"
+	icon = 'icons/obj/smooth_structures/wood_table.dmi'
+	icon_state = "wood_table"
 	frame = /obj/structure/table_frame/wood
 	framestack = /obj/item/stack/sheet/mineral/wood
 	buildstack = /obj/item/stack/sheet/mineral/wood
+	resistance_flags = FLAMMABLE
+	max_integrity = 70
+	canSmoothWith = list(/obj/structure/table/wood,
+		/obj/structure/table/wood/poker,
+		/obj/structure/table/wood/bar)
+
+/obj/structure/table/wood/narsie_act(total_override = TRUE)
+	if(!total_override)
+		..()
 
 /obj/structure/table/wood/poker //No specialties, Just a mapping object.
 	name = "gambling table"
 	desc = "A seedy table for seedy dealings in seedy places."
-	icon_state = "pokertable"
+	icon = 'icons/obj/smooth_structures/poker_table.dmi'
+	icon_state = "poker_table"
 	buildstack = /obj/item/stack/tile/carpet
+
+/obj/structure/table/wood/poker/narsie_act()
+	..(FALSE)
+
+/obj/structure/table/wood/fancy
+	name = "fancy table"
+	desc = "A standard metal table frame covered with an amazingly fancy, patterned cloth."
+	icon = 'icons/obj/structures.dmi'
+	icon_state = "fancy_table"
+	frame = /obj/structure/table_frame
+	framestack = /obj/item/stack/rods
+	buildstack = /obj/item/stack/tile/carpet
+	canSmoothWith = list(/obj/structure/table/wood/fancy, /obj/structure/table/wood/fancy/black)
+
+/obj/structure/table/wood/fancy/New()
+	// New() is used so that the /black subtype can override `icon` easily and
+	// the correct value will be used by the smoothing subsystem.
+	. = ..()
+	// Needs to be set dynamically because table smooth sprites are 32x34,
+	// which the editor treats as a two-tile-tall object. The sprites are that
+	// size so that the north/south corners look nice - examine the detail on
+	// the sprites in the editor to see why.
+	icon = 'icons/obj/smooth_structures/fancy_table.dmi'
+
+/obj/structure/table/wood/fancy/black
+	icon_state = "fancy_table_black"
+	buildstack = /obj/item/stack/tile/carpet/black
+
+/obj/structure/table/wood/fancy/black/New()
+	. = ..()
+	// Ditto above.
+	icon = 'icons/obj/smooth_structures/fancy_table_black.dmi'
 
 /*
  * Reinforced tables
  */
 /obj/structure/table/reinforced
 	name = "reinforced table"
-	desc = "A reinforced version of the four legged table, much harder to simply deconstruct."
-	icon_state = "reinftable"
-	var/status = 2
+	desc = "A reinforced version of the four legged table."
+	icon = 'icons/obj/smooth_structures/reinforced_table.dmi'
+	icon_state = "r_table"
+	deconstruction_ready = 0
 	buildstack = /obj/item/stack/sheet/plasteel
+	canSmoothWith = list(/obj/structure/table/reinforced, /obj/structure/table)
+	max_integrity = 200
+	integrity_failure = 50
+	armor = list("melee" = 10, "bullet" = 30, "laser" = 30, "energy" = 100, "bomb" = 20, "bio" = 0, "rad" = 0, "fire" = 80, "acid" = 70)
 
-/obj/structure/table/reinforced/attackby(obj/item/weapon/W as obj, mob/user as mob, params)
-	if (istype(W, /obj/item/weapon/weldingtool))
-		var/obj/item/weapon/weldingtool/WT = W
-		if(WT.remove_fuel(0, user))
-			if(src.status == 2)
-				user << "<span class='notice'>You start weakening the reinforced table...</span>"
-				playsound(src.loc, 'sound/items/Welder.ogg', 50, 1)
-				if (do_after(user, 50))
-					if(!src || !WT.isOn()) return
-					user << "<span class='notice'>You weaken the table.</span>"
-					src.status = 1
-			else
-				user << "<span class='notice'>You start strengthening the reinforced table...</span>"
-				playsound(src.loc, 'sound/items/Welder.ogg', 50, 1)
-				if (do_after(user, 50))
-					if(!src || !WT.isOn()) return
-					user << "<span class='notice'>You strengthen the table.</span>"
-					src.status = 2
+/obj/structure/table/reinforced/deconstruction_hints(mob/user)
+	if(deconstruction_ready)
+		to_chat(user, "<span class='notice'>The top cover has been <i>welded</i> loose and the main frame's <b>bolts</b> are exposed.</span>")
+	else
+		to_chat(user, "<span class='notice'>The top cover is firmly <b>welded</b> on.</span>")
+
+/obj/structure/table/reinforced/attackby(obj/item/W, mob/user, params)
+	if(W.tool_behaviour == TOOL_WELDER)
+		if(!W.tool_start_check(user, amount=0))
 			return
+
+		if(deconstruction_ready)
+			to_chat(user, "<span class='notice'>You start strengthening the reinforced table...</span>")
+			if (W.use_tool(src, user, 50, volume=50))
+				to_chat(user, "<span class='notice'>You strengthen the table.</span>")
+				deconstruction_ready = 0
+		else
+			to_chat(user, "<span class='notice'>You start weakening the reinforced table...</span>")
+			if (W.use_tool(src, user, 50, volume=50))
+				to_chat(user, "<span class='notice'>You weaken the table.</span>")
+				deconstruction_ready = 1
+	else
+		. = ..()
+
+/obj/structure/table/reinforced/brass
+	name = "brass table"
+	desc = "A solid, slightly beveled brass table."
+	icon = 'icons/obj/smooth_structures/brass_table.dmi'
+	icon_state = "brass_table"
+	resistance_flags = FIRE_PROOF | ACID_PROOF
+	frame = /obj/structure/table_frame/brass
+	framestack = /obj/item/stack/tile/brass
+	buildstack = /obj/item/stack/tile/brass
+	framestackamount = 1
+	buildstackamount = 1
+	canSmoothWith = list(/obj/structure/table/reinforced/brass, /obj/structure/table/bronze)
+
+/obj/structure/table/reinforced/brass/New()
+	change_construction_value(2)
 	..()
 
-/obj/structure/table/reinforced/attack_paw(mob/user)
-	attack_hand(user)
+/obj/structure/table/reinforced/brass/Destroy()
+	change_construction_value(-2)
+	return ..()
 
-/obj/structure/table/reinforced/attack_hulk(mob/living/carbon/human/user)
-	..(user, 1)
-	if(prob(75))
-		playsound(src, 'sound/effects/meteorimpact.ogg', 100, 1)
-		user << text("<span class='notice'>You kick [src] into pieces.</span>")
-		user.say(pick(";RAAAAAAAARGH!", ";HNNNNNNNNNGGGGGGH!", ";GWAAAAAAAARRRHHH!", "NNNNNNNNGGGGGGGGHH!", ";AAAAAAARRRGH!" ))
-		table_destroy(1)
+/obj/structure/table/reinforced/brass/tablepush(mob/living/user, mob/living/pushed_mob)
+	.= ..()
+	playsound(src, 'sound/magic/clockwork/fellowship_armory.ogg', 50, TRUE)
+
+/obj/structure/table/reinforced/brass/narsie_act()
+	take_damage(rand(15, 45), BRUTE)
+	if(src) //do we still exist?
+		var/previouscolor = color
+		color = "#960000"
+		animate(src, color = previouscolor, time = 8)
+		addtimer(CALLBACK(src, /atom/proc/update_atom_colour), 8)
+
+/obj/structure/table/reinforced/brass/ratvar_act()
+	obj_integrity = max_integrity
+
+/obj/structure/table/bronze
+	name = "bronze table"
+	desc = "A solid table made out of bronze."
+	icon = 'icons/obj/smooth_structures/brass_table.dmi'
+	icon_state = "brass_table"
+	resistance_flags = FIRE_PROOF | ACID_PROOF
+	buildstack = /obj/item/stack/tile/bronze
+	canSmoothWith = list(/obj/structure/table/reinforced/brass, /obj/structure/table/bronze)
+
+/obj/structure/table/bronze/tablepush(mob/living/user, mob/living/pushed_mob)
+	..()
+	playsound(src, 'sound/magic/clockwork/fellowship_armory.ogg', 50, TRUE)
+
+/*
+ * Surgery Tables
+ */
+
+/obj/structure/table/optable
+	name = "operating table"
+	desc = "Used for advanced medical procedures."
+	icon = 'icons/obj/surgery.dmi'
+	icon_state = "optable"
+	buildstack = /obj/item/stack/sheet/mineral/silver
+	smooth = SMOOTH_FALSE
+	can_buckle = 1
+	buckle_lying = 1
+	buckle_requires_restraints = 1
+	var/mob/living/carbon/human/patient = null
+	var/obj/machinery/computer/operating/computer = null
+
+/obj/structure/table/optable/New()
+	..()
+	for(var/direction in GLOB.cardinals)
+		computer = locate(/obj/machinery/computer/operating, get_step(src, direction))
+		if(computer)
+			computer.table = src
+			break
+
+/obj/structure/table/optable/tablepush(mob/living/user, mob/living/pushed_mob)
+	pushed_mob.forceMove(src.loc)
+	pushed_mob.resting = 1
+	pushed_mob.update_canmove()
+	visible_message("<span class='notice'>[user] has laid [pushed_mob] on [src].</span>")
+	check_patient()
+
+/obj/structure/table/optable/proc/check_patient()
+	var/mob/M = locate(/mob/living/carbon/human, loc)
+	if(M)
+		if(M.resting)
+			patient = M
+			return 1
 	else
-		playsound(src, 'sound/effects/bang.ogg', 50, 1)
-		user << text("<span class='notice'>You kick [src].</span>")
-	return 1
+		patient = null
+		return 0
+
+
 
 /*
  * Racks
@@ -493,112 +459,82 @@
 	desc = "Different from the Middle Ages version."
 	icon = 'icons/obj/objects.dmi'
 	icon_state = "rack"
-	density = 1
-	anchored = 1.0
-	throwpass = 1	//You can throw objects over this, despite it's density.
-	var/health = 5
+	layer = TABLE_LAYER
+	density = TRUE
+	anchored = TRUE
+	pass_flags = LETPASSTHROW //You can throw objects over this, despite it's density.
+	max_integrity = 20
 
-/obj/structure/rack/ex_act(severity, target)
-	switch(severity)
-		if(1.0)
-			qdel(src)
-		if(2.0)
-			if(prob(50))
-				rack_destroy()
-			else
-				qdel(src)
-		if(3.0)
-			if(prob(25))
-				rack_destroy()
+/obj/structure/rack/examine(mob/user)
+	..()
+	to_chat(user, "<span class='notice'>It's held together by a couple of <b>bolts</b>.</span>")
 
-/obj/structure/rack/blob_act()
-	if(prob(75))
-		qdel(src)
-		return
-	else if(prob(50))
-		rack_destroy()
-		return
-
-/obj/structure/rack/CanPass(atom/movable/mover, turf/target, height=0)
-	if(height==0) return 1
+/obj/structure/rack/CanPass(atom/movable/mover, turf/target)
 	if(src.density == 0) //Because broken racks -Agouri |TODO: SPRITE!|
 		return 1
-	if(istype(mover) && mover.checkpass(PASSTABLE))
+	if(istype(mover) && (mover.pass_flags & PASSTABLE))
 		return 1
 	else
 		return 0
 
-/obj/structure/rack/MouseDrop_T(obj/O as obj, mob/user as mob)
-	if ((!( istype(O, /obj/item/weapon) ) || user.get_active_hand() != O))
+/obj/structure/rack/CanAStarPass(ID, dir, caller)
+	. = !density
+	if(ismovableatom(caller))
+		var/atom/movable/mover = caller
+		. = . || (mover.pass_flags & PASSTABLE)
+
+/obj/structure/rack/MouseDrop_T(obj/O, mob/user)
+	. = ..()
+	if ((!( istype(O, /obj/item) ) || user.get_active_held_item() != O))
 		return
-	if(isrobot(user))
+	if(!user.dropItemToGround(O))
 		return
-	if(!user.drop_item())
-		user << "<span class='warning'>\The [O] is stuck to your hand, you cannot put it in the rack!</span>"
-		return
-	if (O.loc != src.loc)
+	if(O.loc != src.loc)
 		step(O, get_dir(O, src))
-	return
 
-/obj/structure/rack/attackby(obj/item/weapon/W as obj, mob/user as mob, params)
-	if (istype(W, /obj/item/weapon/wrench))
-		playsound(src.loc, 'sound/items/Ratchet.ogg', 50, 1)
-		rack_destroy()
+/obj/structure/rack/attackby(obj/item/W, mob/user, params)
+	if (W.tool_behaviour == TOOL_WRENCH && !(flags_1&NODECONSTRUCT_1))
+		W.play_tool_sound(src)
+		deconstruct(TRUE)
 		return
-
-	if(isrobot(user))
-		return
-	if(!user.drop_item())
-		user << "<span class='warning'>\The [W] is stuck to your hand, you cannot put it in the rack!</span>"
-		return
-	W.Move(loc)
-	return 1
-
+	if(user.a_intent == INTENT_HARM)
+		return ..()
+	if(user.transferItemToLoc(W, drop_location()))
+		return 1
 
 /obj/structure/rack/attack_paw(mob/living/user)
 	attack_hand(user)
 
-/obj/structure/rack/attack_hulk(mob/living/carbon/human/user)
-	..(user, 1)
-	rack_destroy()
-	return 1
-
 /obj/structure/rack/attack_hand(mob/living/user)
+	. = ..()
+	if(.)
+		return
+	if(user.IsKnockdown() || user.resting || user.lying || user.get_num_legs() < 2)
+		return
 	user.changeNext_move(CLICK_CD_MELEE)
-	user.do_attack_animation(src)
-	playsound(loc, 'sound/items/dodgeball.ogg', 80, 1)
-	user.visible_message("<span class='warning'>[user] kicks [src].</span>", \
-						 "<span class='danger'>You kick [src].</span>")
-	health -= rand(1,2)
-	healthcheck()
+	user.do_attack_animation(src, ATTACK_EFFECT_KICK)
+	user.visible_message("<span class='danger'>[user] kicks [src].</span>", null, null, COMBAT_MESSAGE_RANGE)
+	take_damage(rand(4,8), BRUTE, "melee", 1)
 
-/obj/structure/rack/attack_alien(mob/living/user)
-	user.do_attack_animation(src)
-	visible_message("<span class='warning'>[user] slices [src] apart.</span>")
-	rack_destroy()
-
-
-/obj/structure/rack/attack_animal(mob/living/simple_animal/user)
-	if(user.environment_smash)
-		user.do_attack_animation(src)
-		visible_message("<span class='warning'>[user] smashes [src] apart.</span>")
-		rack_destroy()
-/obj/structure/rack/attack_tk() // no telehulk sorry
-	return
-
-/obj/structure/rack/proc/healthcheck()
-	if(health <= 0)
-		rack_destroy()
-	return
+/obj/structure/rack/play_attack_sound(damage_amount, damage_type = BRUTE, damage_flag = 0)
+	switch(damage_type)
+		if(BRUTE)
+			if(damage_amount)
+				playsound(loc, 'sound/items/dodgeball.ogg', 80, 1)
+			else
+				playsound(loc, 'sound/weapons/tap.ogg', 50, 1)
+		if(BURN)
+			playsound(loc, 'sound/items/welder.ogg', 40, 1)
 
 /*
  * Rack destruction
  */
 
-/obj/structure/rack/proc/rack_destroy()
-	density = 0
-	var/obj/item/weapon/rack_parts/newparts = new(loc)
-	transfer_fingerprints_to(newparts)
+/obj/structure/rack/deconstruct(disassembled = TRUE)
+	if(!(flags_1&NODECONSTRUCT_1))
+		density = FALSE
+		var/obj/item/rack_parts/newparts = new(loc)
+		transfer_fingerprints_to(newparts)
 	qdel(src)
 
 
@@ -606,27 +542,33 @@
  * Rack Parts
  */
 
-/obj/item/weapon/rack_parts
+/obj/item/rack_parts
 	name = "rack parts"
 	desc = "Parts of a rack."
-	icon = 'icons/obj/items.dmi'
+	icon = 'icons/obj/items_and_weapons.dmi'
 	icon_state = "rack_parts"
-	flags = CONDUCT
-	m_amt = 3750
+	flags_1 = CONDUCT_1
+	materials = list(MAT_METAL=2000)
+	var/building = FALSE
 
-/obj/item/weapon/rack_parts/attackby(obj/item/weapon/W as obj, mob/user as mob, params)
-	..()
-	if (istype(W, /obj/item/weapon/wrench))
-		new /obj/item/stack/sheet/metal( user.loc )
+/obj/item/rack_parts/attackby(obj/item/W, mob/user, params)
+	if (W.tool_behaviour == TOOL_WRENCH)
+		new /obj/item/stack/sheet/metal(user.loc)
 		qdel(src)
-		return
-	return
+	else
+		. = ..()
 
-/obj/item/weapon/rack_parts/attack_self(mob/user as mob)
-	user << "<span class='notice'>You start constructing rack...</span>"
-	if (do_after(user, 50))
-		var/obj/structure/rack/R = new /obj/structure/rack( user.loc )
+/obj/item/rack_parts/attack_self(mob/user)
+	if(building)
+		return
+	building = TRUE
+	to_chat(user, "<span class='notice'>You start constructing a rack...</span>")
+	if(do_after(user, 50, target = user, progress=TRUE))
+		if(!user.temporarilyRemoveItemFromInventory(src))
+			return
+		var/obj/structure/rack/R = new /obj/structure/rack(user.loc)
+		user.visible_message("<span class='notice'>[user] assembles \a [R].\
+			</span>", "<span class='notice'>You assemble \a [R].</span>")
 		R.add_fingerprint(user)
-		user.drop_item()
 		qdel(src)
-		return
+	building = FALSE

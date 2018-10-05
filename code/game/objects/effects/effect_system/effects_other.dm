@@ -1,108 +1,118 @@
 
 /////////////////////////////////////////////
-//////// Attach an Ion trail to any object, that spawns when it moves (like for the jetpack)
+//////// Attach a trail to any object, that spawns when it moves (like for the jetpack)
 /// just pass in the object to attach it to in set_up
 /// Then do start() to start it and stop() to stop it, obviously
 /// and don't call start() in a loop that will be repeated otherwise it'll get spammed!
 /////////////////////////////////////////////
 
-/obj/effect/effect/ion_trails
-	name = "ion trails"
-	icon_state = "ion_trails"
-	anchored = 1.0
-
-/datum/effect/effect/system/ion_trail_follow
+/datum/effect_system/trail_follow
 	var/turf/oldposition
-	var/processing = 1
-	var/on = 1
+	var/active = FALSE
+	var/allow_overlap = FALSE
+	var/auto_process = TRUE
+	var/qdel_in_time = 10
+	var/fadetype = "ion_fade"
+	var/fade = TRUE
+	var/nograv_required = FALSE
 
-/datum/effect/effect/system/ion_trail_follow/Destroy()
+/datum/effect_system/trail_follow/set_up(atom/atom)
+	attach(atom)
+	oldposition = get_turf(atom)
+
+/datum/effect_system/trail_follow/Destroy()
 	oldposition = null
+	stop()
 	return ..()
 
-/datum/effect/effect/system/ion_trail_follow/set_up(atom/atom)
-	attach(atom)
-
-
-/datum/effect/effect/system/ion_trail_follow/start() //Whoever is responsible for this abomination of code should become an hero
-	if(!src.on)
-		src.on = 1
-		src.processing = 1
-	if(src.processing)
-		src.processing = 0
-		var/turf/T = get_turf(src.holder)
-		if(T != src.oldposition)
-			if(!has_gravity(T))
-				var/obj/effect/effect/ion_trails/I = PoolOrNew(/obj/effect/effect/ion_trails, oldposition)
-				I.dir = src.holder.dir
-				flick("ion_fade", I)
-				I.icon_state = ""
-				spawn( 20 )
-					qdel(I)
-			src.oldposition = T
-		spawn(2)
-			if(src.on)
-				src.processing = 1
-				src.start()
-
-/datum/effect/effect/system/ion_trail_follow/proc/stop()
-	src.processing = 0
-	src.on = 0
+/datum/effect_system/trail_follow/proc/stop()
 	oldposition = null
+	STOP_PROCESSING(SSfastprocess, src)
+	active = FALSE
+	return TRUE
 
+/datum/effect_system/trail_follow/start()
+	oldposition = get_turf(holder)
+	if(!check_conditions())
+		return FALSE
+	if(auto_process)
+		START_PROCESSING(SSfastprocess, src)
+	active = TRUE
+	return TRUE
 
+/datum/effect_system/trail_follow/process()
+	generate_effect()
+
+/datum/effect_system/trail_follow/generate_effect()
+	if(!check_conditions())
+		return stop()
+	if(oldposition && !(oldposition == get_turf(holder)))
+		if(!oldposition.has_gravity() || !nograv_required)
+			var/obj/effect/E = new effect_type(oldposition)
+			set_dir(E)
+			if(fade)
+				flick(fadetype, E)
+				E.icon_state = ""
+			if(qdel_in_time)
+				QDEL_IN(E, qdel_in_time)
+	oldposition = get_turf(holder)
+
+/datum/effect_system/trail_follow/proc/check_conditions()
+	if(!get_turf(holder))
+		return FALSE
+	return TRUE
+
+/datum/effect_system/trail_follow/steam
+	effect_type = /obj/effect/particle_effect/steam
+
+/obj/effect/particle_effect/ion_trails
+	name = "ion trails"
+	icon_state = "ion_trails"
+	anchored = TRUE
+
+/obj/effect/particle_effect/ion_trails/flight
+	icon_state = "ion_trails_flight"
+
+/datum/effect_system/trail_follow/ion
+	effect_type = /obj/effect/particle_effect/ion_trails
+	nograv_required = TRUE
+	qdel_in_time = 20
+
+/datum/effect_system/trail_follow/proc/set_dir(obj/effect/particle_effect/ion_trails/I)
+	I.setDir(holder.dir)
 
 //Reagent-based explosion effect
-/datum/effect/effect/system/reagents_explosion
+
+/datum/effect_system/reagents_explosion
 	var/amount 						// TNT equivalent
 	var/flashing = 0			// does explosion creates flash effect?
 	var/flashing_factor = 0		// factor of how powerful the flash effect relatively to the explosion
 	var/explosion_message = 1				//whether we show a message to mobs.
 
-/datum/effect/effect/system/reagents_explosion/set_up (amt, loc, flash = 0, flash_fact = 0, message = 1)
+/datum/effect_system/reagents_explosion/set_up(amt, loca, flash = 0, flash_fact = 0, message = 1)
 	amount = amt
 	explosion_message = message
-	if(istype(loc, /turf/))
-		location = loc
+	if(isturf(loca))
+		location = loca
 	else
-		location = get_turf(loc)
+		location = get_turf(loca)
 
 	flashing = flash
 	flashing_factor = flash_fact
 
-	return
-
-/datum/effect/effect/system/reagents_explosion/start()
+/datum/effect_system/reagents_explosion/start()
 	if(explosion_message)
 		location.visible_message("<span class='danger'>The solution violently explodes!</span>", \
 								"<span class='italics'>You hear an explosion!</span>")
-	if (amount <= 2)
-		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+	if (amount < 1)
+		var/datum/effect_system/spark_spread/s = new /datum/effect_system/spark_spread
 		s.set_up(2, 1, location)
 		s.start()
 
-		for(var/mob/M in viewers(1, location))
-			if (prob (50 * amount))
-				M << "<span class='danger'>The explosion knocks you down.</span>"
-				M.Weaken(rand(1,5))
+		for(var/mob/living/L in viewers(1, location))
+			if(prob(50 * amount))
+				to_chat(L, "<span class='danger'>The explosion knocks you down.</span>")
+				L.Knockdown(rand(20,100))
 		return
 	else
-		var/devastation = -1
-		var/heavy = -1
-		var/light = -1
-		var/flash = -1
-
-		// Clamp all values to MAX_EXPLOSION_RANGE
-		if (round(amount/12) > 0)
-			devastation = min (MAX_EX_DEVESTATION_RANGE, devastation + round(amount/12))
-
-		if (round(amount/6) > 0)
-			heavy = min (MAX_EX_HEAVY_RANGE, heavy + round(amount/6))
-
-		if (round(amount/3) > 0)
-			light = min (MAX_EX_LIGHT_RANGE, light + round(amount/3))
-
-		if (flashing && flashing_factor)
-			flash += (round(amount/4) * flashing_factor)
-
-		explosion(location, devastation, heavy, light, flash)
+		dyn_explosion(location, amount, flashing_factor)

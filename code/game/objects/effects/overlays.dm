@@ -1,7 +1,5 @@
 /obj/effect/overlay
 	name = "overlay"
-	unacidable = 1
-	var/i_attached//Added for possible image attachments to objects. For hallucinations and the like.
 
 /obj/effect/overlay/singularity_act()
 	return
@@ -15,27 +13,41 @@
 	icon_state="b_beam"
 	var/atom/BeamSource
 
-/obj/effect/overlay/beam/New()
-	..()
-	spawn(10) qdel(src)
+/obj/effect/overlay/beam/Initialize()
+	. = ..()
+	QDEL_IN(src, 10)
 
 /obj/effect/overlay/palmtree_r
-	name = "Palm tree"
+	name = "palm tree"
 	icon = 'icons/misc/beach2.dmi'
 	icon_state = "palm1"
-	density = 1
-	layer = 5
-	anchored = 1
+	density = TRUE
+	layer = WALL_OBJ_LAYER
+	anchored = TRUE
 
 /obj/effect/overlay/palmtree_l
-	name = "Palm tree"
+	name = "palm tree"
 	icon = 'icons/misc/beach2.dmi'
 	icon_state = "palm2"
-	density = 1
-	layer = 5
-	anchored = 1
+	density = TRUE
+	layer = WALL_OBJ_LAYER
+	anchored = TRUE
 
 /obj/effect/overlay/coconut
-	name = "Coconuts"
+	gender = PLURAL
+	name = "coconuts"
 	icon = 'icons/misc/beach.dmi'
 	icon_state = "coconuts"
+
+/obj/effect/overlay/sparkles
+	gender = PLURAL
+	name = "sparkles"
+	icon = 'icons/effects/effects.dmi'
+	icon_state = "shieldsparkles"
+	anchored = TRUE
+
+/obj/effect/overlay/vis
+	mouse_opacity = MOUSE_OPACITY_TRANSPARENT
+	anchored = TRUE
+	var/unused = 0 //When detected to be unused it gets set to world.time, after a while it gets removed
+	var/cache_expiration = 2 MINUTES // overlays which go unused for 2 minutes get cleaned up

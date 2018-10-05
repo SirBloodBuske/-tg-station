@@ -3,32 +3,40 @@
 /obj/effect/step_trigger
 	var/affect_ghosts = 0
 	var/stopper = 1 // stops throwers
-	var/mobs_only = 0
-	invisibility = 101 // nope cant see this shit
-	anchored = 1
+	var/mobs_only = FALSE
+	invisibility = INVISIBILITY_ABSTRACT // nope cant see this shit
+	anchored = TRUE
 
-/obj/effect/step_trigger/proc/Trigger(var/atom/movable/A)
+/obj/effect/step_trigger/proc/Trigger(atom/movable/A)
 	return 0
 
 /obj/effect/step_trigger/Crossed(H as mob|obj)
 	..()
 	if(!H)
 		return
-	if(istype(H, /mob/dead/observer) && !affect_ghosts)
+	if(isobserver(H) && !affect_ghosts)
 		return
-	if(!istype(H, /mob) && mobs_only)
+	if(!ismob(H) && mobs_only)
 		return
 	Trigger(H)
+
+
+/obj/effect/step_trigger/singularity_act()
+	return
+
+/obj/effect/step_trigger/singularity_pull()
+	return
 
 /* Sends a message to mob when triggered*/
 
 /obj/effect/step_trigger/message
 	var/message	//the message to give to the mob
 	var/once = 1
+	mobs_only = TRUE
 
-/obj/effect/step_trigger/message/Trigger(mob/M as mob)
+/obj/effect/step_trigger/message/Trigger(mob/M)
 	if(M.client)
-		M << "<span class='info'>[message]</span>"
+		to_chat(M, "<span class='info'>[message]</span>")
 		if(once)
 			qdel(src)
 
@@ -43,8 +51,8 @@
 	var/nostop = 0 // if 1: will only be stopped by teleporters
 	var/list/affecting = list()
 
-/obj/effect/step_trigger/thrower/Trigger(var/atom/A)
-	if(!A || !istype(A, /atom/movable))
+/obj/effect/step_trigger/thrower/Trigger(atom/A)
+	if(!A || !ismovableatom(A))
 		return
 	var/atom/movable/AM = A
 	var/curtiles = 0
@@ -84,7 +92,7 @@
 			var/predir = AM.dir
 			step(AM, direction)
 			if(!facedir)
-				AM.dir = predir
+				AM.setDir(predir)
 
 
 
@@ -106,12 +114,11 @@
 	var/teleport_y = 0
 	var/teleport_z = 0
 
-/obj/effect/step_trigger/teleporter/Trigger(var/atom/movable/A)
+/obj/effect/step_trigger/teleporter/Trigger(atom/movable/A)
 	if(teleport_x && teleport_y && teleport_z)
 
-		A.x = teleport_x
-		A.y = teleport_y
-		A.z = teleport_z
+		var/turf/T = locate(teleport_x, teleport_y, teleport_z)
+		A.forceMove(T)
 
 /* Random teleporter, teleports atoms to locations ranging from teleport_x - teleport_x_offset, etc */
 
@@ -120,13 +127,13 @@
 	var/teleport_y_offset = 0
 	var/teleport_z_offset = 0
 
-/obj/effect/step_trigger/teleporter/random/Trigger(var/atom/movable/A)
+/obj/effect/step_trigger/teleporter/random/Trigger(atom/movable/A)
 	if(teleport_x && teleport_y && teleport_z)
 		if(teleport_x_offset && teleport_y_offset && teleport_z_offset)
 
-			A.x = rand(teleport_x, teleport_x_offset)
-			A.y = rand(teleport_y, teleport_y_offset)
-			A.z = rand(teleport_z, teleport_z_offset)
+			var/turf/T = locate(rand(teleport_x, teleport_x_offset), rand(teleport_y, teleport_y_offset), rand(teleport_z, teleport_z_offset))
+			if (T)
+				A.forceMove(T)
 
 /* Fancy teleporter, creates sparks and smokes when used */
 
@@ -139,25 +146,25 @@
 	var/entersmoke = 0
 	var/exitsmoke = 0
 
-/obj/effect/step_trigger/teleport_fancy/Trigger(mob/M as mob)
+/obj/effect/step_trigger/teleport_fancy/Trigger(mob/M)
 	var/dest = locate(locationx, locationy, z)
 	M.Move(dest)
 
 	if(entersparks)
-		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+		var/datum/effect_system/spark_spread/s = new
 		s.set_up(4, 1, src)
 		s.start()
 	if(exitsparks)
-		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+		var/datum/effect_system/spark_spread/s = new
 		s.set_up(4, 1, dest)
 		s.start()
 
 	if(entersmoke)
-		var/datum/effect/effect/system/harmless_smoke_spread/s = new /datum/effect/effect/system/harmless_smoke_spread
+		var/datum/effect_system/smoke_spread/s = new
 		s.set_up(4, 1, src, 0)
 		s.start()
 	if(exitsmoke)
-		var/datum/effect/effect/system/harmless_smoke_spread/s = new /datum/effect/effect/system/harmless_smoke_spread
+		var/datum/effect_system/smoke_spread/s = new
 		s.set_up(4, 1, dest, 0)
 		s.start()
 
@@ -176,17 +183,17 @@
 	var/triggerer_only = 0 //Whether the triggerer is the only person who hears this
 
 
-/obj/effect/step_trigger/sound_effect/Trigger(var/atom/movable/A)
+/obj/effect/step_trigger/sound_effect/Trigger(atom/movable/A)
 	var/turf/T = get_turf(A)
 
 	if(!T)
 		return
 
-	if(triggerer_only)
-		A.playsound_local(T, sound, volume, freq_vary)
+	if(triggerer_only && ismob(A))
+		var/mob/B = A
+		B.playsound_local(T, sound, volume, freq_vary)
 	else
 		playsound(T, sound, volume, freq_vary, extra_range)
 
 	if(happens_once)
 		qdel(src)
-
